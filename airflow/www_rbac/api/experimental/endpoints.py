@@ -25,6 +25,9 @@ from airflow.api.common.experimental.get_task import get_task
 from airflow.api.common.experimental.get_task_instance import get_task_instance
 from airflow.api.common.experimental.get_code import get_code
 from airflow.api.common.experimental.get_dag_run_state import get_dag_run_state
+from airflow.api.common.experimental.list_tasks import list_tasks
+from airflow.api.common.experimental.graph_sort import topological_sort_edges, graph_sort
+from airflow.api.common.experimental.clear_dag_tasks import clear_dag_tasks
 from airflow.exceptions import AirflowException
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.strings import to_boolean
@@ -83,7 +86,8 @@ def trigger_dag(dag_id):
         replace_microseconds = to_boolean(data['replace_microseconds'])
 
     try:
-        dr = trigger.trigger_dag(dag_id, run_id, conf, execution_date, replace_microseconds)
+        # dr = trigger.trigger_dag(dag_id, run_id, conf, execution_date, replace_microseconds)
+        dr = trigger.trigger_dag(dag_id, run_id, conf, execution_date, replace_microseconds=False)
     except AirflowException as err:
         _log.error(err)
         response = jsonify(error="{}".format(err))
@@ -352,3 +356,81 @@ def delete_pool(name):
         return response
     else:
         return jsonify(pool.to_json())
+
+
+@api_experimental.route('/taskslist/<string:dag_id>/dagruns/<string:exec_date>', methods=['GET'])
+@requires_authentication
+def task_list(dag_id, exec_date):
+    """
+    Returns a JSON with a dag_run's task instance list.
+    The format for the exec_date is expected to be
+    "YYYY-mm-DDTHH:MM:SS", for example: "2016-11-16T11:34:15+00:00". This will
+    of course need to have been encoded for URL in the request.
+    """
+    _log.info("into task list api")
+    try:
+        tasks = list_tasks(dag_name=dag_id, exec_date=exec_date)
+        task_edges = topological_sort_edges(dag_id)
+        tasks['taskList'] = graph_sort(task_edges, tasks)
+    except AirflowException as err:
+        _log.error(err)
+        response = jsonify(error="{}".format(err))
+        response.status_code = err.status_code
+        return response
+    else:
+        return jsonify(tasks)
+
+
+@csrf.exempt
+@api_experimental.route('/clear/<string:dag_id>/tasks', methods=['POST'])
+@requires_authentication
+def clear_dag(dag_id):
+    data = request.get_json(force=True)
+    _log.info("clear_dag data : %s " % data)
+
+    try:
+        task_id = data['task_id']
+        start_date = data['start_date']
+        end_date = data['end_date']
+        downstream = data['downstream']
+    except ValueError as err:
+        err_msg = "One or more given parameters not validation. \nUsage: " + \
+                  "{'task_id':'', 'start_date':'', 'end_date':'', " + \
+                  "'downstream':True}\n Example date format: 2015-11-16T14:34:15+00:00"
+        _log.error(err)
+        response = jsonify({'error': err_msg})
+        response.status_code = 400
+
+        return response
+
+    # try:
+    #     _log.info("task_id: %s, start_date: %s" % (task_id, start_date))
+    #     start_date = timezone.parse(start_date)
+    #     end_date = timezone.parse(end_date)
+    # except ValueError:
+    #     error_message = (
+    #         'Given execution date, {}, could not be identified '
+    #         'as a date. Example date format: 2015-11-16T14:34:15+00:00'
+    #         .format(execution_date))
+    #     _log.info(error_message)
+    #     response = jsonify({'error': error_message})
+    #     response.status_code = 400
+
+    #     return response
+
+    try:
+        count, all_tis = clear_dag_tasks(dag_id, task_id, start_date, end_date, downstream)
+    except AirflowException as err:
+        _log.error(err)
+        response = jsonify(error="{}".format(err))
+        response.status_code = err.status_code
+        return response
+
+    if 0 == count:
+        ret = {'count': 0, 'allTasks': []}
+    else:
+        ret = {'count': count, 'allTasks': [str(t) for t in all_tis]}
+
+    return jsonify(ret)
+
+
