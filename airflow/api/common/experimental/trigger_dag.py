@@ -78,6 +78,8 @@ def _trigger_dag(
         run_conf = conf if isinstance(conf, dict) else json.loads(conf)
 
     triggers = []
+    # BUG: subdag nested bug, 1 line
+    is_triggered = dict()
     dags_to_trigger = [dag] + dag.subdags
     for _dag in dags_to_trigger:
         trigger = _dag.create_dagrun(
