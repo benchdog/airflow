@@ -88,8 +88,14 @@ def _trigger_dag(
     triggers = list()
     dags_to_trigger = list()
     dags_to_trigger.append(dag)
+    # BUG: subdag nested bug, 1 line
+    is_triggered = dict()
     while dags_to_trigger:
         dag = dags_to_trigger.pop()
+        if is_triggered.get(dag.dag_id):
+            continue
+        # BUG: subdag nested bug, 1 line
+        is_triggered[dag.dag_id] = True
         trigger = dag.create_dagrun(
             run_id=run_id,
             execution_date=execution_date,
