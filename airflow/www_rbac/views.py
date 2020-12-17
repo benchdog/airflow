@@ -2229,7 +2229,9 @@ class XComModelView(AirflowModelView):
     search_columns = ['key', 'value', 'timestamp', 'execution_date', 'task_id', 'dag_id']
     list_columns = ['key', 'value', 'timestamp', 'execution_date', 'task_id', 'dag_id']
     add_columns = ['key', 'value', 'execution_date', 'task_id', 'dag_id']
-    edit_columns = ['key', 'value', 'execution_date', 'task_id', 'dag_id']
+    # Execution date check disable
+    # edit_columns = ['key', 'value', 'execution_date', 'task_id', 'dag_id']
+    edit_columns = ['key', 'value', 'task_id', 'dag_id']
     base_order = ('execution_date', 'desc')
 
     base_filters = [['dag_id', DagFilter, lambda: []]]
@@ -2253,7 +2255,9 @@ class XComModelView(AirflowModelView):
         item.value = XCom.serialize_value(item.value)
 
     def pre_update(self, item):
-        item.execution_date = timezone.make_aware(item.execution_date)
+        # bug: raise Not a valid datetime exception.
+        # dismiss execution_date row and pass the value from 'edit' button function.
+        # item.execution_date = timezone.make_aware(item.execution_date)
         item.value = XCom.serialize_value(item.value)
 
 
